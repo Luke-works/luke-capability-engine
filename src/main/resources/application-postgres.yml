@@ -1,0 +1,24 @@
+# PostgreSQL profile — activate with SPRING_PROFILES_ACTIVE=postgres.
+#
+# Points at the SAME managed Postgres instance as luke-core-engine
+# (Render database "luke-camunda-db", database name "luke_camunda"). The
+# capability engine keeps its tables in its own schema (DB_SCHEMA, default
+# "capability") so it never collides with the Camunda/core-engine tables.
+
+spring:
+  datasource:
+    # Prefer a full DB_URL when provided; otherwise build it from the
+    # individual host/port/db fields that Render's blueprint wires in.
+    url: ${DB_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DATABASE:luke_camunda}}
+    username: ${DB_USERNAME:luke}
+    password: ${DB_PASSWORD:luke}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      connection-timeout: 20000
+
+  h2:
+    console:
+      enabled: false

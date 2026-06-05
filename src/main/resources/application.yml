@@ -1,0 +1,68 @@
+server:
+  # Render injects PORT at runtime. 8082 is the local default and matches
+  # luke-core-engine's CapabilitiesProxyController (luke.capabilities.base-url).
+  port: ${PORT:8082}
+
+spring:
+  application:
+    name: luke-capability-engine
+
+  # Default: H2 file database (zero setup for local dev).
+  # To use the shared Postgres, set SPRING_PROFILES_ACTIVE=postgres.
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:./luke-data/luke-capability;AUTO_SERVER=TRUE}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        # All entities live in this dedicated schema, keeping the capability
+        # engine's tables isolated from Camunda's tables in the shared database.
+        default_schema: ${DB_SCHEMA:capability}
+        # Make Hibernate emit "CREATE SCHEMA IF NOT EXISTS <default_schema>"
+        # before creating tables, so the schema is auto-provisioned.
+        hbm2ddl:
+          create_namespaces: true
+        format_sql: false
+
+# Luke platform settings
+luke:
+  auth:
+    # Gateway act-as token verification. When jwks-url is set, user-facing
+    # capability routes require a valid gateway Bearer and the user identity is
+    # taken from the signed 'sub' (X-User-Id header is ignored). Unset → headers
+    # are trusted (local dev / Postman). Point at luke-auth-engine's JWKS.
+    gateway:
+      jwks-url: ${LUKE_AUTH_GATEWAY_JWKS_URL:}
+      issuer: ${LUKE_AUTH_GATEWAY_ISSUER:luke-auth-engine}
+      audience: ${LUKE_AUTH_GATEWAY_AUDIENCE:luke-core-engine}
+  cors:
+    # Comma-separated origin patterns. Local dev allows any localhost port;
+    # in production set ALLOWED_ORIGINS to the deployed UI URLs.
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:*}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.luke: DEBUG

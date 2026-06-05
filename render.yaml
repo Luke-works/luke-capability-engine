@@ -1,0 +1,51 @@
+# Render blueprint — the capability engine web service.
+#
+# It reuses the SAME managed Postgres as luke-core-engine ("luke-camunda-db",
+# database "luke_camunda") and isolates its tables in a dedicated schema
+# (DB_SCHEMA, default "capability"). The database itself is declared in
+# luke-core-engine's render.yaml; here we only reference it via fromDatabase.
+
+services:
+  - type: web
+    name: luke-capability-engine
+    runtime: docker
+    plan: starter            # 512MB RAM, $7/mo
+    region: ohio             # must match the database region
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    envVars:
+      # Activate application-postgres.yml overrides
+      - key: SPRING_PROFILES_ACTIVE
+        value: postgres
+
+      # Dedicated Postgres schema for this engine
+      - key: DB_SCHEMA
+        value: capability
+
+      # Postgres connection — wired from the shared database declared in
+      # luke-core-engine's blueprint.
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: luke-camunda-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: luke-camunda-db
+          property: port
+      - key: POSTGRES_DATABASE
+        fromDatabase:
+          name: luke-camunda-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: luke-camunda-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: luke-camunda-db
+          property: password
+
+      # CORS — tighten to your deployed UI URLs once they exist.
+      - key: ALLOWED_ORIGINS
+        value: "https://*.onrender.com"
