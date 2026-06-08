@@ -9,4 +9,8 @@ public interface CapabilityGrantRepository extends JpaRepository<CapabilityGrant
     Optional<CapabilityGrant> findByTenantIdAndUserIdAndCapabilityCode(String tenantId, String userId, String capabilityCode);
 
     List<CapabilityGrant> findByTenantIdAndUserId(String tenantId, String userId);
+
+    List<CapabilityGrant> findByTenantId(String tenantId);
+
+    List<CapabilityGrant> findByUserId(String userId);
 }
