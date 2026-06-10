@@ -46,6 +46,12 @@ luke:
       jwks-url: ${LUKE_AUTH_GATEWAY_JWKS_URL:}
       issuer: ${LUKE_AUTH_GATEWAY_ISSUER:luke-auth-engine}
       audience: ${LUKE_AUTH_GATEWAY_AUDIENCE:luke-core-engine}
+    # Operator credential required on the admin capability routes (/api/tenants/**:
+    # tenant subscriptions and per-user grants). core-engine presents the SAME pair
+    # on its server-to-server calls. Unset → routes are open (local dev / Postman).
+    operator:
+      user: ${CAPABILITY_OPERATOR_USER:}
+      password: ${CAPABILITY_OPERATOR_PASSWORD:}
   cors:
     # Comma-separated origin patterns. Local dev allows any localhost port;
     # in production set ALLOWED_ORIGINS to the deployed UI URLs.
