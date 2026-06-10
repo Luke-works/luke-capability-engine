@@ -59,6 +59,11 @@ public class FormDefinition {
     /** Soft-delete marker (trash); null = live. */
     private LocalDateTime deletedAt;
 
+    /** Advisory edit-lock holder (userId), or null when unlocked. Set on checkout,
+     *  cleared on release / check-in / discard. Stale locks can be taken over. */
+    private String lockedBy;
+    private LocalDateTime lockedAt;
+
     private String createdBy;
     private String updatedBy;
 
@@ -100,6 +105,12 @@ public class FormDefinition {
 
     public LocalDateTime getDeletedAt() { return deletedAt; }
     public void setDeletedAt(LocalDateTime deletedAt) { this.deletedAt = deletedAt; }
+
+    public String getLockedBy() { return lockedBy; }
+    public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }
+
+    public LocalDateTime getLockedAt() { return lockedAt; }
+    public void setLockedAt(LocalDateTime lockedAt) { this.lockedAt = lockedAt; }
 
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }

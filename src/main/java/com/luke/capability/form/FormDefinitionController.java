@@ -32,10 +32,13 @@ public class FormDefinitionController {
 
     private final FormDefinitionRepository forms;
     private final FormVersionRepository versions;
+    private final FormAuditEventRepository audit;
 
-    public FormDefinitionController(FormDefinitionRepository forms, FormVersionRepository versions) {
+    public FormDefinitionController(FormDefinitionRepository forms, FormVersionRepository versions,
+                                    FormAuditEventRepository audit) {
         this.forms = forms;
         this.versions = versions;
+        this.audit = audit;
     }
 
     /* ── request bodies ─────────────────────────────────────── */
@@ -63,7 +66,9 @@ public class FormDefinitionController {
         form.setStatus("DRAFT");
         form.setCreatedBy(userId);
         form.setUpdatedBy(userId);
-        return forms.save(form);
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "created", null);
+        return saved;
     }
 
     @GetMapping
@@ -175,8 +180,12 @@ public class FormDefinitionController {
             form.setPublishedVersion(next);
             if (!"RETIRED".equals(form.getStatus())) form.setStatus("PUBLISHED");
         }
+        form.setLockedBy(null); // checking in releases the edit lock
+        form.setLockedAt(null);
         form.setUpdatedBy(userId);
         forms.save(form);
+        record(form, userId, "checked_in", "v" + next);
+        if (publish) record(form, userId, "published", "v" + next);
         return artifact;
     }
 
@@ -202,7 +211,9 @@ public class FormDefinitionController {
         form.setPublishedVersion(v);
         if (!"RETIRED".equals(form.getStatus())) form.setStatus("PUBLISHED");
         form.setUpdatedBy(userId);
-        return forms.save(form);
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "published", "v" + v);
+        return saved;
     }
 
     /** Load an older version back into the editable draft. */
@@ -213,7 +224,9 @@ public class FormDefinitionController {
         FormDefinition form = load(tenantId, id);
         form.setDraftSchema(version(form, v).getSchema());
         form.setUpdatedBy(userId);
-        return forms.save(form);
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "restored_to_draft", "v" + v);
+        return saved;
     }
 
     /* ── retire & remove ────────────────────────────────────── */
@@ -225,7 +238,9 @@ public class FormDefinitionController {
         FormDefinition form = load(tenantId, id);
         form.setStatus("RETIRED");
         form.setUpdatedBy(userId);
-        return forms.save(form);
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "archived", null);
+        return saved;
     }
 
     @PostMapping("/{id}/unretire")
@@ -235,23 +250,32 @@ public class FormDefinitionController {
         FormDefinition form = load(tenantId, id);
         form.setStatus(form.getPublishedVersion() != null ? "PUBLISHED" : "DRAFT");
         form.setUpdatedBy(userId);
-        return forms.save(form);
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "unarchived", null);
+        return saved;
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void softDelete(@RequestHeader("X-Tenant-Id") String tenantId, @PathVariable String id) {
+    public void softDelete(@RequestHeader("X-Tenant-Id") String tenantId,
+                           @RequestHeader(value = "X-User-Id", required = false) String userId,
+                           @PathVariable String id) {
         FormDefinition form = load(tenantId, id);
         form.setDeletedAt(java.time.LocalDateTime.now());
         forms.save(form);
+        record(form, userId, "deleted", null);
     }
 
     @PostMapping("/{id}/restore")
-    public FormDefinition restore(@RequestHeader("X-Tenant-Id") String tenantId, @PathVariable String id) {
+    public FormDefinition restore(@RequestHeader("X-Tenant-Id") String tenantId,
+                                  @RequestHeader(value = "X-User-Id", required = false) String userId,
+                                  @PathVariable String id) {
         FormDefinition form = forms.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> notFound("Unknown form: " + id));
         form.setDeletedAt(null);
-        return forms.save(form);
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "restored", null);
+        return saved;
     }
 
     @DeleteMapping("/{id}/purge")
@@ -260,10 +284,102 @@ public class FormDefinitionController {
         FormDefinition form = forms.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> notFound("Unknown form: " + id));
         versions.deleteAll(versions.findByFormIdOrderByVersionAsc(id));
+        audit.deleteByFormId(id);
         forms.delete(form);
     }
 
+    /* ── edit lock (advisory) ───────────────────────────────── */
+
+    /** Acquire the edit lock. 409 if another user holds a fresh lock unless {@code force=true}. */
+    @PostMapping("/{id}/checkout")
+    public FormDefinition checkout(@RequestHeader("X-Tenant-Id") String tenantId,
+                                   @RequestHeader(value = "X-User-Id", required = false) String userId,
+                                   @PathVariable String id,
+                                   @RequestParam(defaultValue = "false") boolean force) {
+        FormDefinition form = load(tenantId, id);
+        String holder = form.getLockedBy();
+        if (holder != null && !holder.equals(userId) && !force) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Locked by " + holder);
+        }
+        boolean takeover = holder != null && !holder.equals(userId);
+        form.setLockedBy(userId);
+        form.setLockedAt(java.time.LocalDateTime.now());
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "checked_out", takeover ? "took over from " + holder : null);
+        return saved;
+    }
+
+    /** Release the edit lock (only the holder, or {@code force=true}). */
+    @PostMapping("/{id}/release")
+    public FormDefinition release(@RequestHeader("X-Tenant-Id") String tenantId,
+                                  @RequestHeader(value = "X-User-Id", required = false) String userId,
+                                  @PathVariable String id,
+                                  @RequestParam(defaultValue = "false") boolean force) {
+        FormDefinition form = load(tenantId, id);
+        if (force || userId == null || userId.equals(form.getLockedBy())) {
+            form.setLockedBy(null);
+            form.setLockedAt(null);
+            return forms.save(form);
+        }
+        return form;
+    }
+
+    /** Discard the working draft — revert it to the published (else latest) version — and release the lock. */
+    @PostMapping("/{id}/discard")
+    public FormDefinition discard(@RequestHeader("X-Tenant-Id") String tenantId,
+                                  @RequestHeader(value = "X-User-Id", required = false) String userId,
+                                  @PathVariable String id) {
+        FormDefinition form = load(tenantId, id);
+        Integer pin = form.getPublishedVersion();
+        String reverted = pin != null
+                ? version(form, pin).getSchema()
+                : versions.findTopByFormIdOrderByVersionDesc(id).map(FormVersion::getSchema).orElse(null);
+        form.setDraftSchema(reverted);
+        form.setLockedBy(null);
+        form.setLockedAt(null);
+        form.setUpdatedBy(userId);
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "discarded", null);
+        return saved;
+    }
+
+    /* ── clone ──────────────────────────────────────────────── */
+
+    /** Duplicate a form as a new DRAFT ("Copy of …"), copying the current draft schema; no versions carried over. */
+    @PostMapping("/{id}/clone")
+    @ResponseStatus(HttpStatus.CREATED)
+    public FormDefinition clone(@RequestHeader("X-Tenant-Id") String tenantId,
+                                @RequestHeader(value = "X-User-Id", required = false) String userId,
+                                @PathVariable String id) {
+        FormDefinition src = load(tenantId, id);
+        FormDefinition copy = new FormDefinition();
+        copy.setTenantId(tenantId);
+        copy.setCode(uniqueCode(tenantId));
+        copy.setName("Copy of " + src.getName());
+        copy.setDescription(src.getDescription());
+        copy.setStatus("DRAFT");
+        copy.setDraftSchema(src.getDraftSchema());
+        copy.setCreatedBy(userId);
+        copy.setUpdatedBy(userId);
+        FormDefinition saved = forms.save(copy);
+        record(saved, userId, "created", "cloned from " + src.getCode());
+        return saved;
+    }
+
+    /* ── activity feed ──────────────────────────────────────── */
+
+    @GetMapping("/{id}/audit")
+    public List<FormAuditEvent> auditTrail(@RequestHeader("X-Tenant-Id") String tenantId, @PathVariable String id) {
+        load(tenantId, id);
+        return audit.findByFormIdAndTenantIdOrderByAtDesc(id, tenantId);
+    }
+
     /* ── helpers ────────────────────────────────────────────── */
+
+    /** Append an immutable audit event for a lifecycle action on {@code form}. */
+    private void record(FormDefinition form, String actor, String action, String detail) {
+        audit.save(new FormAuditEvent(form.getId(), form.getTenantId(), action, detail, actor));
+    }
 
     private FormDefinition load(String tenantId, String id) {
         requireTenant(tenantId);
