@@ -3,6 +3,7 @@ package com.luke.capability.form;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,15 +45,24 @@ public class ProcessStarter {
      * processStartError / processStartAt). The caller persists the instance.
      */
     public StartResult startForInstance(FormInstance inst) {
+        // Two process variables only: formData (the answers) and formMetaData
+        // (everything else), both as JSON. core-engine stores them as JSON (Spin)
+        // variables, navigable as ${formData.prop('email')} / ${formMetaData.prop('instanceId')}.
         Map<String, Object> vars = new HashMap<>();
-        vars.put("tenantId", inst.getTenantId());
-        vars.put("formCode", inst.getDefinitionCode());
-        vars.put("version", inst.getVersion());
-        vars.put("instanceId", inst.getId());
         try {
             vars.put("formData", MAPPER.writeValueAsString(inst.getData() != null ? inst.getData() : Map.of()));
         } catch (Exception e) {
             vars.put("formData", "{}");
+        }
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("instanceId", inst.getId());
+        meta.put("formCode", inst.getDefinitionCode());
+        meta.put("tenantId", inst.getTenantId());
+        meta.put("version", inst.getVersion());
+        try {
+            vars.put("formMetaData", MAPPER.writeValueAsString(meta));
+        } catch (Exception e) {
+            vars.put("formMetaData", "{}");
         }
 
         StartResult res = start(inst.getTenantId(), inst.getId(), vars);
