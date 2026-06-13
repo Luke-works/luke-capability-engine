@@ -52,6 +52,18 @@ luke:
     operator:
       user: ${CAPABILITY_OPERATOR_USER:}
       password: ${CAPABILITY_OPERATOR_PASSWORD:}
+  core-engine:
+    # core-engine base URL for the cap→core process-start call (server-to-server).
+    base-url: ${CORE_ENGINE_BASE_URL:http://localhost:8080}
+  internal:
+    # Shared secret presented on /api/internal/** calls into core-engine. MUST
+    # match core-engine's value; unset → core-engine rejects the call (process
+    # start is then skipped, best-effort).
+    shared-secret: ${LUKE_INTERNAL_SHARED_SECRET:}
+  embed:
+    # HMAC secret for signing/verifying public embed tokens. Set a real value in
+    # prod; the dev default is insecure.
+    hmac-secret: ${LUKE_EMBED_HMAC_SECRET:dev-embed-secret-change-me}
   cors:
     # Comma-separated origin patterns. Local dev allows any localhost port;
     # in production set ALLOWED_ORIGINS to the deployed UI URLs.

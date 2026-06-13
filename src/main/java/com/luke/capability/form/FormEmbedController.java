@@ -31,13 +31,16 @@ public class FormEmbedController {
     private final FormDefinitionRepository forms;
     private final FormVersionRepository versions;
     private final FormInstanceRepository instances;
+    private final ProcessStarter processStarter;
 
     public FormEmbedController(EmbedTokens embedTokens, FormDefinitionRepository forms,
-                               FormVersionRepository versions, FormInstanceRepository instances) {
+                               FormVersionRepository versions, FormInstanceRepository instances,
+                               ProcessStarter processStarter) {
         this.embedTokens = embedTokens;
         this.forms = forms;
         this.versions = versions;
         this.instances = instances;
+        this.processStarter = processStarter;
     }
 
     public record SubmitBody(Map<String, Object> data) {}
@@ -74,12 +77,18 @@ public class FormEmbedController {
         inst.setVersion(v);
         inst.setState(FormInstanceStates.SUBMITTED);
         inst.setData(body != null ? body.data() : Map.of());
-        inst.setContext(Map.of("source", "embed"));
+        inst.setContext(new HashMap<>(Map.of("source", "embed")));
         inst.setSubmittedAt(LocalDateTime.now());
         instances.save(inst);
 
-        // Phase 3: start the generic Camunda intake process here.
-        return Map.of("ok", true, "instanceId", inst.getId());
+        // Start the generic intake process (best-effort) and link it back.
+        String processInstanceId = processStarter.startForInstance(inst);
+        if (processInstanceId != null) {
+            inst.getContext().put("processInstanceId", processInstanceId);
+            instances.save(inst);
+        }
+        return Map.of("ok", true, "instanceId", inst.getId(),
+                "processInstanceId", processInstanceId != null ? processInstanceId : "");
     }
 
     /* ── helpers ────────────────────────────────────────────── */

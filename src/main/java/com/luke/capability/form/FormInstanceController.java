@@ -37,13 +37,16 @@ public class FormInstanceController {
     private final FormInstanceRepository instances;
     private final FormDefinitionRepository forms;
     private final FormVersionRepository versions;
+    private final ProcessStarter processStarter;
 
     public FormInstanceController(FormInstanceRepository instances,
                                   FormDefinitionRepository forms,
-                                  FormVersionRepository versions) {
+                                  FormVersionRepository versions,
+                                  ProcessStarter processStarter) {
         this.instances = instances;
         this.forms = forms;
         this.versions = versions;
+        this.processStarter = processStarter;
     }
 
     /* ── request bodies ─────────────────────────────────────── */
@@ -142,6 +145,15 @@ public class FormInstanceController {
         inst.setState(FormInstanceStates.SUBMITTED);
         inst.setSubmittedAt(LocalDateTime.now());
         instances.save(inst);
+
+        // Start the generic intake process (best-effort) and link it back.
+        String processInstanceId = processStarter.startForInstance(inst);
+        if (processInstanceId != null) {
+            Map<String, Object> ctx = new HashMap<>(inst.getContext() != null ? inst.getContext() : Map.of());
+            ctx.put("processInstanceId", processInstanceId);
+            inst.setContext(ctx);
+            instances.save(inst);
+        }
         return view(inst, schemaFor(tenantId, inst));
     }
 
