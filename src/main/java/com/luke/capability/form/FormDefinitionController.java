@@ -33,12 +33,14 @@ public class FormDefinitionController {
     private final FormDefinitionRepository forms;
     private final FormVersionRepository versions;
     private final FormAuditEventRepository audit;
+    private final EmbedTokens embedTokens;
 
     public FormDefinitionController(FormDefinitionRepository forms, FormVersionRepository versions,
-                                    FormAuditEventRepository audit) {
+                                    FormAuditEventRepository audit, EmbedTokens embedTokens) {
         this.forms = forms;
         this.versions = versions;
         this.audit = audit;
+        this.embedTokens = embedTokens;
     }
 
     /* ── request bodies ─────────────────────────────────────── */
@@ -92,6 +94,20 @@ public class FormDefinitionController {
     @GetMapping("/by-code/{code}")
     public FormDefinition getByCode(@RequestHeader("X-Tenant-Id") String tenantId, @PathVariable String code) {
         return loadByCode(tenantId, code);
+    }
+
+    /**
+     * Mint an opaque, signed embed token for this form (requires a published
+     * version). The token wraps tenant+code and is what the public embed surface
+     * (iframe) and inbound webhook resolve to.
+     */
+    @GetMapping("/{id}/embed-token")
+    public Map<String, Object> embedToken(@RequestHeader("X-Tenant-Id") String tenantId, @PathVariable String id) {
+        FormDefinition form = load(tenantId, id);
+        if (form.getPublishedVersion() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Publish the form before embedding it");
+        }
+        return Map.of("token", embedTokens.sign(tenantId, form.getCode()), "code", form.getCode());
     }
 
     @PatchMapping("/{id}")
