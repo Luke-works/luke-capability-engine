@@ -1,5 +1,6 @@
 package com.luke.capability.form;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.Map;
@@ -10,14 +11,15 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Starts the generic intake process in core-engine after a form submission.
- * Server-to-server (the first cap→core call) into core-engine's internal
- * endpoint, authenticated with a shared secret. BEST-EFFORT: any failure is
- * logged and swallowed — a submission is never lost because the process couldn't
- * start. Returns the process instance id on success, else {@code null}.
+ * Starts the generic intake process in core-engine after a form submission, and
+ * records the OUTCOME on the instance so the UI tracker can show exactly what
+ * happened — started (with the process id) or failed (with the error). The call
+ * is the first cap→core hop, authenticated with a shared secret. BEST-EFFORT: a
+ * failure never blocks the submission; it's captured, not thrown.
  */
 @Component
 public class ProcessStarter {
@@ -33,8 +35,15 @@ public class ProcessStarter {
     @Value("${luke.internal.shared-secret:}")
     private String sharedSecret;
 
-    /** Start the intake process for a submitted instance. Returns its id, or null. */
-    public String startForInstance(FormInstance inst) {
+    /** Outcome of a start attempt. status = STARTED | FAILED. */
+    public record StartResult(String processInstanceId, String status, String error) {}
+
+    /**
+     * Start the intake process for a submitted instance AND record the outcome on
+     * the instance's context (processStartStatus / processInstanceId /
+     * processStartError / processStartAt). The caller persists the instance.
+     */
+    public StartResult startForInstance(FormInstance inst) {
         Map<String, Object> vars = new HashMap<>();
         vars.put("tenantId", inst.getTenantId());
         vars.put("formCode", inst.getDefinitionCode());
@@ -45,10 +54,19 @@ public class ProcessStarter {
         } catch (Exception e) {
             vars.put("formData", "{}");
         }
-        return start(inst.getTenantId(), inst.getId(), vars);
+
+        StartResult res = start(inst.getTenantId(), inst.getId(), vars);
+
+        Map<String, Object> ctx = new HashMap<>(inst.getContext() != null ? inst.getContext() : Map.of());
+        ctx.put("processStartStatus", res.status());
+        ctx.put("processStartAt", System.currentTimeMillis());
+        if (res.processInstanceId() != null) ctx.put("processInstanceId", res.processInstanceId());
+        if (res.error() != null) ctx.put("processStartError", res.error()); else ctx.remove("processStartError");
+        inst.setContext(ctx);
+        return res;
     }
 
-    private String start(String tenantId, String businessKey, Map<String, Object> variables) {
+    private StartResult start(String tenantId, String businessKey, Map<String, Object> variables) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -63,10 +81,29 @@ public class ProcessStarter {
             Map<String, Object> resp = rest.postForObject(
                     coreBaseUrl + "/api/internal/process-start", new HttpEntity<>(body, headers), Map.class);
             Object pid = resp != null ? resp.get("processInstanceId") : null;
-            return pid != null ? pid.toString() : null;
+            if (pid != null) return new StartResult(pid.toString(), "STARTED", null);
+            return new StartResult(null, "FAILED", "core-engine returned no process instance id");
+        } catch (HttpStatusCodeException e) {
+            String detail = messageFrom(e.getResponseBodyAsString(), e.getStatusText());
+            log.warn("Intake process start failed for tenant {} (instance {}): HTTP {} — {}", tenantId, businessKey, e.getStatusCode().value(), detail);
+            return new StartResult(null, "FAILED", "HTTP " + e.getStatusCode().value() + " — " + detail);
         } catch (Exception e) {
-            log.warn("Intake process start failed for tenant {} (instance {}): {}", tenantId, businessKey, e.getMessage());
-            return null; // best-effort
+            String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            log.warn("Intake process start failed for tenant {} (instance {}): {}", tenantId, businessKey, detail);
+            return new StartResult(null, "FAILED", detail);
         }
+    }
+
+    /** Pull a human message out of core-engine's JSON error body, else trim the body. */
+    private static String messageFrom(String body, String fallback) {
+        if (body == null || body.isBlank()) return fallback;
+        try {
+            JsonNode node = MAPPER.readTree(body);
+            if (node.hasNonNull("message")) return node.get("message").asText();
+            if (node.hasNonNull("error")) return node.get("error").asText();
+        } catch (Exception ignored) {
+            // not JSON
+        }
+        return body.length() > 300 ? body.substring(0, 300) : body;
     }
 }

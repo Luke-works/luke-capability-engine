@@ -81,14 +81,13 @@ public class FormEmbedController {
         inst.setSubmittedAt(LocalDateTime.now());
         instances.save(inst);
 
-        // Start the generic intake process (best-effort) and link it back.
-        String processInstanceId = processStarter.startForInstance(inst);
-        if (processInstanceId != null) {
-            inst.getContext().put("processInstanceId", processInstanceId);
-            instances.save(inst);
-        }
+        // Start the generic intake process (best-effort); records the outcome
+        // (started + id, or failed + error) onto the instance for the tracker.
+        ProcessStarter.StartResult res = processStarter.startForInstance(inst);
+        instances.save(inst);
         return Map.of("ok", true, "instanceId", inst.getId(),
-                "processInstanceId", processInstanceId != null ? processInstanceId : "");
+                "processInstanceId", res.processInstanceId() != null ? res.processInstanceId() : "",
+                "processStatus", res.status());
     }
 
     /* ── helpers ────────────────────────────────────────────── */

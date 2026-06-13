@@ -146,14 +146,10 @@ public class FormInstanceController {
         inst.setSubmittedAt(LocalDateTime.now());
         instances.save(inst);
 
-        // Start the generic intake process (best-effort) and link it back.
-        String processInstanceId = processStarter.startForInstance(inst);
-        if (processInstanceId != null) {
-            Map<String, Object> ctx = new HashMap<>(inst.getContext() != null ? inst.getContext() : Map.of());
-            ctx.put("processInstanceId", processInstanceId);
-            inst.setContext(ctx);
-            instances.save(inst);
-        }
+        // Start the generic intake process (best-effort); the outcome (started +
+        // id, or failed + error) is recorded on the instance context for the tracker.
+        processStarter.startForInstance(inst);
+        instances.save(inst);
         return view(inst, schemaFor(tenantId, inst));
     }
 
