@@ -153,6 +153,29 @@ public class FormInstanceController {
         return view(inst, schemaFor(tenantId, inst));
     }
 
+    /**
+     * Re-attempt the process start for a submitted instance whose process never
+     * started (or failed). Records the fresh outcome — so it both recovers the
+     * submission and surfaces the explicit error if it fails again.
+     */
+    @PostMapping("/{id}/retry-process")
+    public Map<String, Object> retryProcess(@RequestHeader("X-Tenant-Id") String tenantId, @PathVariable String id) {
+        FormInstance inst = load(tenantId, id);
+        if (!FormInstanceStates.SUBMITTED.equals(inst.getState()) && !FormInstanceStates.PROCESSED.equals(inst.getState())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a submitted instance can start a process (state " + inst.getState() + ")");
+        }
+        Object existing = inst.getContext() != null ? inst.getContext().get("processInstanceId") : null;
+        if (existing != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A process is already running for this submission");
+        }
+        ProcessStarter.StartResult res = processStarter.startForInstance(inst);
+        instances.save(inst);
+        return Map.of(
+                "status", res.status(),
+                "processInstanceId", res.processInstanceId() != null ? res.processInstanceId() : "",
+                "error", res.error() != null ? res.error() : "");
+    }
+
     /** Generic guarded state transition. */
     @PutMapping("/{id}/state")
     public FormInstance setState(@RequestHeader("X-Tenant-Id") String tenantId,
