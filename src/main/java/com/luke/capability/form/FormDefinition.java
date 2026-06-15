@@ -67,6 +67,10 @@ public class FormDefinition {
     private String createdBy;
     private String updatedBy;
 
+    /** When the form last passed its self-test ("Test the form"), and by whom. */
+    private LocalDateTime lastTestedAt;
+    private String lastTestedBy;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -117,6 +121,12 @@ public class FormDefinition {
 
     public String getUpdatedBy() { return updatedBy; }
     public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }
+
+    public LocalDateTime getLastTestedAt() { return lastTestedAt; }
+    public void setLastTestedAt(LocalDateTime lastTestedAt) { this.lastTestedAt = lastTestedAt; }
+
+    public String getLastTestedBy() { return lastTestedBy; }
+    public void setLastTestedBy(String lastTestedBy) { this.lastTestedBy = lastTestedBy; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
 

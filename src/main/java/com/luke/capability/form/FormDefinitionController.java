@@ -271,6 +271,19 @@ public class FormDefinitionController {
         return saved;
     }
 
+    /** Record that the form passed its self-test ("Test the form" sign-off). */
+    @PostMapping("/{id}/sign-off")
+    public FormDefinition signOff(@RequestHeader("X-Tenant-Id") String tenantId,
+                                  @RequestHeader(value = "X-User-Id", required = false) String userId,
+                                  @PathVariable String id) {
+        FormDefinition form = load(tenantId, id);
+        form.setLastTestedAt(java.time.LocalDateTime.now());
+        form.setLastTestedBy(userId);
+        FormDefinition saved = forms.save(form);
+        record(saved, userId, "tested", "Form passed its self-test");
+        return saved;
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void softDelete(@RequestHeader("X-Tenant-Id") String tenantId,
