@@ -64,10 +64,48 @@ luke:
     # HMAC secret for signing/verifying public embed tokens. Set a real value in
     # prod; the dev default is insecure.
     hmac-secret: ${LUKE_EMBED_HMAC_SECRET:dev-embed-secret-change-me}
+  email:
+    # Postmark transactional-email integration (EMAIL capability).
+    postmark:
+      base-url: ${POSTMARK_BASE_URL:https://api.postmarkapp.com}
+      # Account-level token — required to PROVISION a per-tenant Postmark Server.
+      # More privileged than a server token; manage it as a secret.
+      account-token: ${POSTMARK_ACCOUNT_TOKEN:}
+      # Fallback SEND token used only when a tenant has no provisioned server
+      # (dev / single-server mode). Per-tenant sends use the server's own token.
+      server-token: ${POSTMARK_SERVER_TOKEN:}
+      # Fallback sender when there's no server and a request omits 'from'.
+      default-from: ${EMAIL_DEFAULT_FROM:}
+      # Default Postmark message stream for transactional mail.
+      message-stream: ${POSTMARK_MESSAGE_STREAM:outbound}
+    sender:
+      # Platform base domain. A company "acme" sends from "acme.<base-domain>"
+      # (e.g. acme.lukeflow.com). When set, sender ownership is ENFORCED: a send's
+      # From must be on the company's own domain, and a server must be provisioned.
+      # Unset → enforcement off (local dev / Postman).
+      base-domain: ${EMAIL_SENDER_BASE_DOMAIN:}
+      # Local-part for a company's default sender, e.g. no-reply@acme.lukeflow.com.
+      default-local-part: ${EMAIL_SENDER_DEFAULT_LOCAL_PART:no-reply}
+    verification:
+      # Phase-1 org verification: OTP to an official company email, matched against
+      # the org name. The code is sent from the platform sender (default-from) via
+      # the fallback server-token, since the tenant isn't provisioned yet.
+      code-length: ${EMAIL_VERIFICATION_CODE_LENGTH:6}
+      ttl-seconds: ${EMAIL_VERIFICATION_TTL_SECONDS:600}
+      max-attempts: ${EMAIL_VERIFICATION_MAX_ATTEMPTS:5}
   cors:
     # Comma-separated origin patterns. Local dev allows any localhost port;
     # in production set ALLOWED_ORIGINS to the deployed UI URLs.
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:*}
+  secrets:
+    # AES-256-GCM master keys for the encrypted secret store. active-key-id selects
+    # the key for NEW encryptions; each row stores the key id it was encrypted with,
+    # so you can add a new key and rotate gradually. A key value may be a base64
+    # 32-byte key OR any passphrase (SHA-256 derives the bytes).
+    # Prod: set LUKE_SECRETS_ACTIVE_KEY_ID=v1 and LUKE_SECRETS_KEYS_V1=<random key>.
+    active-key-id: ${LUKE_SECRETS_ACTIVE_KEY_ID:dev}
+    keys:
+      dev: ${LUKE_SECRETS_KEY_DEV:dev-secrets-master-key-change-me}
 
 # Actuator
 management:

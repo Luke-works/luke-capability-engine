@@ -49,3 +49,32 @@ services:
       # CORS — tighten to your deployed UI URLs once they exist.
       - key: ALLOWED_ORIGINS
         value: "https://*.onrender.com"
+
+      # Postmark transactional email (EMAIL capability). Set these as secrets in
+      # the Render dashboard. The ACCOUNT token provisions per-tenant servers; the
+      # SERVER token is only a fallback for tenants without a provisioned server.
+      - key: POSTMARK_ACCOUNT_TOKEN
+        sync: false
+      - key: POSTMARK_SERVER_TOKEN
+        sync: false
+      # Default sender fallback — MUST be a verified Postmark Sender Signature / domain.
+      - key: EMAIL_DEFAULT_FROM
+        sync: false
+      # Platform base domain for company sender subdomains (acme.<base-domain>).
+      # Setting this ENFORCES sender ownership: From must be on the company's domain.
+      - key: EMAIL_SENDER_BASE_DOMAIN
+        value: lukeflow.com
+
+      # Secrets store (SECRETS capability) — AES-256-GCM master key. Per-tenant
+      # Postmark tokens and tenant BYO secrets are encrypted at rest with this.
+      # Use a strong random value; rotate by adding LUKE_SECRETS_KEYS_V2 and
+      # flipping LUKE_SECRETS_ACTIVE_KEY_ID.
+      - key: LUKE_SECRETS_ACTIVE_KEY_ID
+        value: v1
+      - key: LUKE_SECRETS_KEYS_V1
+        sync: false
+
+      # Shared secret guarding /api/internal/** (process-triggered email) and the
+      # cap→core process-start hop. MUST match core-engine's LUKE_INTERNAL_SHARED_SECRET.
+      - key: LUKE_INTERNAL_SHARED_SECRET
+        sync: false

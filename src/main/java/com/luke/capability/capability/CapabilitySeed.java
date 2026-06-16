@@ -26,6 +26,9 @@ public class CapabilitySeed implements ApplicationRunner {
         seed(new Capability("CALENDAR", "Business Calendars", "Working calendars, holidays and time windows.", "CalendarDays", "/calendars", "ACTIVE", "STANDARD"));
         seed(new Capability("SLA", "SLA Management", "Service level targets and breach tracking.", "Timer", "/sla", "ACTIVE", "PREMIUM"));
         seed(new Capability("FORMS", "Forms", "Build and manage forms.", "ListChecks", "/forms", "ACTIVE", "STANDARD"));
+        seed(new Capability("EMAIL", "Email", "Send transactional email via Postmark.", "Mail", "/emails", "ACTIVE", "STANDARD"));
+        // SECRETS is internal-only for now — used by services via /api/internal/secrets,
+        // not offered to tenants. Re-add a seed here when the tenant API is opened.
     }
 
     private void seed(Capability capability) {

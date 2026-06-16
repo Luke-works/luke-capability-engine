@@ -35,7 +35,8 @@ public class GatewayAuthFilter {
     public FilterRegistrationBean<Filter> gatewayAuthFilterRegistration(GatewayTokenVerifier verifier) {
         FilterRegistrationBean<Filter> reg = new FilterRegistrationBean<>();
         reg.setFilter(new Impl(verifier));
-        reg.addUrlPatterns("/api/form-definitions/*", "/api/form-instances/*", "/api/my-capabilities");
+        reg.addUrlPatterns("/api/form-definitions/*", "/api/form-instances/*", "/api/emails/*",
+                "/api/email-servers/*", "/api/email-verification/*", "/api/my-capabilities");
         reg.setName("gatewayAuthFilter");
         reg.setOrder(1); // before the capability access interceptor
         return reg;
