@@ -91,13 +91,50 @@ public class SecretCrypto {
     }
 
     /** Base64 32-byte key → use as-is; anything else → SHA-256 of the bytes. */
+    /**
+     * Derive the 32-byte AES key from configured key material.
+     *
+     * <p>Prefer the EXPLICIT, unambiguous forms — they make the derivation stable
+     * regardless of what the bytes happen to look like:
+     * <ul>
+     *   <li>{@code base64:<b64>} — a raw 32-byte key (must decode to exactly 32 bytes).</li>
+     *   <li>{@code passphrase:<text>} — any passphrase, SHA-256'd to 32 bytes.</li>
+     * </ul>
+     *
+     * <p>Unprefixed values keep the LEGACY heuristic (base64 of exactly 32 bytes →
+     * raw key, otherwise SHA-256) so secrets already encrypted with the current
+     * config still decrypt. That heuristic is ambiguous, so we WARN when a value
+     * is interpreted as a raw key — migrate it to an explicit {@code base64:} /
+     * {@code passphrase:} prefix to lock the interpretation in.
+     */
     private static SecretKeySpec toAesKey(String value) {
+        String v = value.trim();
+        if (v.startsWith("base64:")) {
+            byte[] decoded = Base64.getDecoder().decode(v.substring("base64:".length()).trim());
+            if (decoded.length != 32) {
+                throw new IllegalStateException(
+                        "base64: secret key must decode to exactly 32 bytes (got " + decoded.length + ")");
+            }
+            return new SecretKeySpec(decoded, "AES");
+        }
+        if (v.startsWith("passphrase:")) {
+            return new SecretKeySpec(sha256(v.substring("passphrase:".length())), "AES");
+        }
+        // Legacy/back-compat (unprefixed) — DO NOT change this derivation or
+        // existing ciphertext becomes undecryptable.
         byte[] bytes;
         try {
-            byte[] decoded = Base64.getDecoder().decode(value.trim());
-            bytes = decoded.length == 32 ? decoded : sha256(value);
+            byte[] decoded = Base64.getDecoder().decode(v);
+            if (decoded.length == 32) {
+                log.warn("SecretCrypto: a key value is being used as a RAW base64 key by the legacy "
+                        + "heuristic. Make it explicit and stable by prefixing it with 'base64:' "
+                        + "(32-byte key) or 'passphrase:' (text passphrase).");
+                bytes = decoded;
+            } else {
+                bytes = sha256(v);
+            }
         } catch (IllegalArgumentException notBase64) {
-            bytes = sha256(value);
+            bytes = sha256(v);
         }
         return new SecretKeySpec(bytes, "AES");
     }
