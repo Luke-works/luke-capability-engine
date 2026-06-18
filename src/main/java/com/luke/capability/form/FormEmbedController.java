@@ -131,7 +131,13 @@ public class FormEmbedController {
         if (w.count.incrementAndGet() > MAX_PER_MINUTE) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many submissions, try again shortly.");
         }
-        if (windows.size() > 10_000) windows.clear(); // crude unbounded-growth guard
+        // Bound growth by evicting only STALE windows (from earlier minutes), never
+        // the current minute's counters. Clearing the whole map (the old behavior)
+        // reset every token's counter at once — a global rate-limit bypass any
+        // attacker could trigger by flooding fresh tokens past the threshold.
+        if (windows.size() > 10_000) {
+            windows.values().removeIf(win -> win.minute != minute);
+        }
     }
 
     private static final class Window {
