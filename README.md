@@ -1,3 +1,9 @@
+> **⚠️ MERGED & ARCHIVED (2026-06).** `luke-capability-engine` has been merged into
+> **`luke-core-engine`** — its domain now runs **in-process** there (Camunda owns
+> orchestration; these tables are the data store, written back in-process). This repo
+> is no longer built or deployed. See `luke-platform/docs/MERGE_MASTER_PROMPT.md`.
+> The content below is historical.
+
 # Luke Capability Engine
 
 Spring Boot service that owns the platform's **capabilities, subscriptions,
